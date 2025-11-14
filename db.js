@@ -1,11 +1,11 @@
 const mysql = require("mysql2");
 
 const connection = mysql.createPool({
-  host: process.env.DB_HOST || 'crossover.proxy.rlwy.net',
+  host: process.env.DB_HOST || 'yamanote.proxy.rlwy.net',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'BQUAksWCdcCleLkTTXabJUfRKvPNIKZi',
+  password: process.env.DB_PASSWORD || 'qFfhaWJmjTBecBEhligfhUcfEMdYZhQl',
   database: process.env.DB_NAME || 'SoberFolks',
-  port: process.env.DB_PORT || 52505,
+  port: process.env.DB_PORT || 31895,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
