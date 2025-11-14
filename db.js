@@ -1,7 +1,7 @@
 const mysql = require("mysql2");
 
 const connection = mysql.createPool({
-  host: process.env.DB_HOST || 'mysql.railway.internal',
+  host: process.env.DB_HOST || 'yamanote.proxy.rlwy.net',
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || 'qFfhaWJmjTBecBEhligfhUcfEMdYZhQl',
   database: process.env.DB_NAME || 'SoberFolks',
