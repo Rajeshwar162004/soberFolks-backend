@@ -28,9 +28,5 @@ tmp/
 temp/
 *.tmp
 
-# Environment secrets — never commit
-.env
-.env.*
-
 # Old backup files
 server_old_backup.js
