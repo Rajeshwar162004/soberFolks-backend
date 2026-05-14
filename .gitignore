@@ -30,3 +30,4 @@ temp/
 
 # Old backup files
 server_old_backup.js
+.env

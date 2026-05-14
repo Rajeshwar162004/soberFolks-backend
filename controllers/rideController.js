@@ -6,7 +6,11 @@ const { pendingRideRequests, driverRequestLocks } = require("../utils/rideState"
 const { calculateDistance, calculateFare } = require("../utils/distance");
 const { generateGeohash, getNeighboringGeohashes } = require("../utils/geohash");
 const { generateOTP, getExpiryTimestamp } = require("../utils/otp");
-const { emitRideStageChanged } = require("../realtime/socketServer");
+const { emitRideStageChanged } = require('../realtime/socketServer');
+const { saveRideSafetyContacts, getRideSafetyContacts } = require('../utils/safetyContacts');
+const { generateTrackToken, expireTokensForRide } = require('../utils/liveTrack');
+const { sendRideAcceptedNotification, sendLiveTrackNotification } = require('../utils/whatsapp');
+const BACKEND_URL = process.env.BACKEND_URL || 'https://soberfolks-backend.onrender.com';
 
 const SEARCH_RADIUS_STEPS_KM = [1.5, 3, 9];
 const DRIVER_LOCK_STALE_AFTER_MS = RIDE_REQUEST_TIMEOUT * 2;
@@ -320,6 +324,14 @@ const requestRide = async (req, res) => {
 
     const rideId = rideResult.rows[0].id;
 
+    // Persist safety contacts (optional — fire-and-forget, never blocks ride creation)
+    const safetyContacts = Array.isArray(req.body.safetyContacts) ? req.body.safetyContacts : [];
+    if (safetyContacts.length > 0) {
+      saveRideSafetyContacts(rideId, safetyContacts).catch(err =>
+        console.warn('Safety contacts save failed (non-critical):', err.message)
+      );
+    }
+
     const rideRequest = {
       rideId,
       consumerId,
@@ -596,11 +608,46 @@ const acceptRide = async (req, res) => {
     });
 
     emitRideStageChanged(parseInt(rideId), {
-      stage: "accepted",
-      status: "accepted",
+      stage: 'accepted',
+      status: 'accepted',
       driverId,
       consumerId: rideRequest.consumerId,
       timestamp: new Date().toISOString(),
+    });
+
+    // Send WhatsApp ride-accepted notification to safety contacts (async, non-blocking)
+    Promise.resolve().then(async () => {
+      try {
+        const contacts = await getRideSafetyContacts(parseInt(rideId));
+        if (contacts.length === 0) return;
+
+        // Fetch consumer name
+        const consumerResult = await db.query(
+          'SELECT full_name FROM consumers WHERE id = $1',
+          [rideRequest.consumerId]
+        );
+        const consumerName = consumerResult.rows[0]?.full_name || 'Your contact';
+
+        // Fetch driver vehicle number
+        const driverResult = await db.query(
+          'SELECT scooter_model FROM drivers WHERE id = $1',
+          [driverId]
+        );
+        const vehicleNumber = driverResult.rows[0]?.scooter_model || 'N/A';
+
+        await sendRideAcceptedNotification(contacts, {
+          consumerName,
+          driverName:    currentDriver.fullName,
+          driverPhone:   currentDriver.phone || 'N/A',
+          vehicleNumber,
+          pickup:        rideRequest.pickupAddress,
+          drop:          rideRequest.dropAddress,
+          fare:          rideRequest.fare,
+          etaMinutes:    etaToPickupMinutes,
+        });
+      } catch (err) {
+        console.warn('WhatsApp ride-accepted notification failed:', err.message);
+      }
     });
   } catch (error) {
     console.error("Accept ride error:", error);
@@ -933,8 +980,42 @@ const startRide = async (req, res) => {
     console.log(`✅ Ride ${rideId} started. POC auto-complete scheduled in 5 minutes.`);
 
     res.json({
-      message: "Ride started successfully.",
+      message: 'Ride started successfully.',
       rideId: parseInt(rideId)
+    });
+
+    // Generate live-track token + send WhatsApp to safety contacts (async, non-blocking)
+    Promise.resolve().then(async () => {
+      try {
+        const contacts = await getRideSafetyContacts(parseInt(rideId));
+        if (contacts.length === 0) return;
+
+        const token    = await generateTrackToken(parseInt(rideId), driverId);
+        const trackUrl = `${BACKEND_URL}/live-track/${token}`;
+
+        // Fetch ride + consumer + driver details for message
+        const rideRow = await db.query(
+          `SELECT r.pickup_address, r.drop_address,
+                  c.full_name AS consumer_name,
+                  d.full_name AS driver_name
+           FROM rides r
+           JOIN consumers c ON c.id = r.consumer_id
+           JOIN drivers   d ON d.id = r.driver_id
+           WHERE r.id = $1`,
+          [rideId]
+        );
+        const row = rideRow.rows[0];
+
+        await sendLiveTrackNotification(contacts, {
+          consumerName: row?.consumer_name || 'Your contact',
+          driverName:   row?.driver_name   || 'Driver',
+          pickup:       row?.pickup_address || '',
+          drop:         row?.drop_address   || '',
+          trackUrl,
+        });
+      } catch (err) {
+        console.warn('WhatsApp live-track notification failed:', err.message);
+      }
     });
   } catch (error) {
     console.error("Start ride error:", error);
