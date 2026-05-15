@@ -29,51 +29,39 @@ function fromNumber() {
  * Send a single WhatsApp message via Twilio.
  * Returns { sid } on success, { error } on failure (never throws).
  */
-async function sendWhatsAppMessage(to, body) {
+async function sendWhatsAppMessage(to, contentVariables) {
   const toFormatted = toWaNumber(to);
   const fromFormatted = fromNumber();
 
-  console.log(`\n📤 [WhatsApp] Attempting send:`);
+  console.log(`\n📤 [WhatsApp] Attempting send (Template):`);
   console.log(`   To:   ${toFormatted}`);
-  console.log(`   From: ${fromFormatted}`);
-  console.log(`   Body: ${body.slice(0, 60)}...`);
+  console.log(`   Vars:`, contentVariables);
 
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
     console.error('❌ [WhatsApp] SKIPPED — Twilio credentials not set in environment variables!');
-    console.error('   Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to Render environment.');
     return { skipped: true };
   }
 
   try {
     const client = require('twilio')(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
+    // Using the user's pre-approved Content API template
     const msg = await client.messages.create({
       from: fromFormatted,
       to:   toFormatted,
-      body,
+      contentSid: 'HXb5b62575e6e4ff6129ad7c8efe1f983e',
+      contentVariables: JSON.stringify(contentVariables)
     });
 
     console.log(`✅ [WhatsApp] Message sent successfully!`);
     console.log(`   SID:    ${msg.sid}`);
     console.log(`   Status: ${msg.status}`);
-    console.log(`   To:     ${msg.to}`);
     return { sid: msg.sid, status: msg.status };
 
   } catch (err) {
     console.error(`❌ [WhatsApp] Send FAILED to ${toFormatted}`);
     console.error(`   Error code:    ${err.code}`);
     console.error(`   Error message: ${err.message}`);
-    console.error(`   More info:     ${err.moreInfo || 'N/A'}`);
-    // Common Twilio error codes:
-    // 63016 — Channel not found (recipient not opted into sandbox)
-    // 63007 — Twilio number has no capabilities for this channel
-    // 21211 — Invalid 'To' number
-    // 20003 — Authentication failure (bad SID/Token)
-    if (err.code === 63016) {
-      console.error(`   👆 SANDBOX: Recipient ${toFormatted} must first text "join <keyword>" to ${fromFormatted}`);
-    } else if (err.code === 20003) {
-      console.error(`   👆 AUTH FAILED: Check TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in Render env`);
-    }
     return { error: err.message, code: err.code };
   }
 }
@@ -94,21 +82,14 @@ async function sendRideAcceptedNotification(contacts, details) {
 
   console.log(`   Consumer: ${consumerName}, Driver: ${driverName}, ETA: ${etaMinutes} min`);
 
-  const body =
-    `🚗 *Ride Safety Alert — SoberFolk*\n\n` +
-    `*${consumerName || 'Your contact'}* has booked a ride.\n\n` +
-    `👤 *Driver:* ${driverName   || 'N/A'}\n` +
-    `📞 *Driver Phone:* ${driverPhone  || 'N/A'}\n` +
-    `🛵 *Vehicle:* ${vehicleNumber || 'N/A'}\n` +
-    `📍 *Pickup:* ${pickup}\n` +
-    `🏁 *Drop:* ${drop}\n` +
-    `💰 *Fare:* ₹${fare}\n` +
-    `⏱️ *ETA to pickup:* ~${etaMinutes || '?'} min\n\n` +
-    `Stay safe! 🙏 — SoberFolk`;
+  const variables = {
+    "1": consumerName || 'Your contact',
+    "2": `Ride accepted! Driver: ${driverName || 'N/A'}, Vehicle: ${vehicleNumber || 'N/A'}. ETA: ${etaMinutes || '?'} min. \nFrom: ${pickup}\nTo: ${drop}`
+  };
 
   for (const c of contacts) {
     console.log(`   → Sending to: ${c.phone} (${c.name || 'unnamed'})`);
-    await sendWhatsAppMessage(c.phone, body);
+    await sendWhatsAppMessage(c.phone, variables);
   }
 }
 
@@ -127,18 +108,14 @@ async function sendLiveTrackNotification(contacts, details) {
 
   console.log(`   Consumer: ${consumerName}, Track URL: ${trackUrl}`);
 
-  const body =
-    `📍 *Live Ride Tracking — SoberFolk*\n\n` +
-    `*${consumerName || 'Your contact'}*'s ride has started!\n\n` +
-    `👤 *Driver:* ${driverName || 'N/A'}\n` +
-    `📍 *From:* ${pickup}\n` +
-    `🏁 *To:* ${drop}\n\n` +
-    `🗺️ *Track live location:*\n${trackUrl}\n\n` +
-    `_(Updates every 5 sec · Link expires when ride ends)_`;
+  const variables = {
+    "1": consumerName || 'Your contact',
+    "2": `Ride started! Driver: ${driverName || 'N/A'}\nTrack live location: ${trackUrl}`
+  };
 
   for (const c of contacts) {
     console.log(`   → Sending to: ${c.phone} (${c.name || 'unnamed'})`);
-    await sendWhatsAppMessage(c.phone, body);
+    await sendWhatsAppMessage(c.phone, variables);
   }
 }
 
