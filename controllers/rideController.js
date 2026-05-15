@@ -326,6 +326,7 @@ const requestRide = async (req, res) => {
 
     // Persist safety contacts (optional — fire-and-forget, never blocks ride creation)
     const safetyContacts = Array.isArray(req.body.safetyContacts) ? req.body.safetyContacts : [];
+    console.log(`🔖 [requestRide] safetyContacts received from mobile: ${safetyContacts.length}`, JSON.stringify(safetyContacts));
     if (safetyContacts.length > 0) {
       saveRideSafetyContacts(rideId, safetyContacts).catch(err =>
         console.warn('Safety contacts save failed (non-critical):', err.message)
@@ -619,7 +620,11 @@ const acceptRide = async (req, res) => {
     Promise.resolve().then(async () => {
       try {
         const contacts = await getRideSafetyContacts(parseInt(rideId));
-        if (contacts.length === 0) return;
+        console.log(`🚗 [acceptRide] Safety contacts for ride ${rideId}: ${contacts.length}`);
+        if (contacts.length === 0) {
+          console.log('   No safety contacts found — WhatsApp notification skipped.');
+          return;
+        }
 
         // Fetch consumer name
         const consumerResult = await db.query(
