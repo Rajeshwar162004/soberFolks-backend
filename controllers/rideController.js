@@ -14,43 +14,6 @@ const BACKEND_URL = process.env.BACKEND_URL || 'https://soberfolks-backend.onren
 
 const SEARCH_RADIUS_STEPS_KM = [1.5, 3, 9];
 const DRIVER_LOCK_STALE_AFTER_MS = RIDE_REQUEST_TIMEOUT * 2;
-const POC_AUTO_COMPLETE_MS = 5 * 60 * 1000;
-const rideAutoCompleteTimers = new Map();
-
-function clearRideAutoCompleteTimer(rideId) {
-  const timer = rideAutoCompleteTimers.get(rideId);
-  if (timer) {
-    clearTimeout(timer);
-    rideAutoCompleteTimers.delete(rideId);
-  }
-}
-
-function scheduleRideAutoComplete(rideId, driverId) {
-  clearRideAutoCompleteTimer(rideId);
-
-  const timer = setTimeout(async () => {
-    try {
-      const result = await db.query(
-        `UPDATE rides
-         SET status = 'completed', completed_at = NOW()
-         WHERE id = $1 AND driver_id = $2 AND status = 'in_progress'`,
-        [rideId, driverId]
-      );
-
-      if (result.rowCount > 0) {
-        releaseDriverLock(driverId, rideId);
-        pendingRideRequests.delete(rideId);
-        console.log(`✅ POC auto-completed ride ${rideId} after 5 minutes.`);
-      }
-    } catch (error) {
-      console.error(`POC auto-complete failed for ride ${rideId}:`, error);
-    } finally {
-      rideAutoCompleteTimers.delete(rideId);
-    }
-  }, POC_AUTO_COMPLETE_MS);
-
-  rideAutoCompleteTimers.set(rideId, timer);
-}
 
 async function fetchCandidateDrivers(pickupLocation, consumerId) {
   const userLat = parseFloat(pickupLocation.latitude);
@@ -966,7 +929,7 @@ const startRide = async (req, res) => {
       [rideId, 'drop', dropOTP, expiresAt]
     );
 
-    scheduleRideAutoComplete(parseInt(rideId), driverId);
+
 
     const rideMeta = await db.query(
       "SELECT consumer_id FROM rides WHERE id = $1",
@@ -982,7 +945,7 @@ const startRide = async (req, res) => {
     });
 
     console.log(`🔐 Drop OTP generated for ride ${rideId}`);
-    console.log(`✅ Ride ${rideId} started. POC auto-complete scheduled in 5 minutes.`);
+    console.log(`✅ Ride ${rideId} started.`);
 
     res.json({
       message: 'Ride started successfully.',
@@ -1076,7 +1039,7 @@ const cancelRide = async (req, res) => {
     `;
 
     await db.query(updateQuery, [rideId]);
-    clearRideAutoCompleteTimer(parseInt(rideId));
+
 
     console.log(`🚫 Ride ${rideId} cancelled by ${userRole} ${userId}`);
 
@@ -1139,7 +1102,7 @@ const completeRide = async (req, res) => {
 
     releaseDriverLock(driverId, parseInt(rideId));
     pendingRideRequests.delete(parseInt(rideId));
-    clearRideAutoCompleteTimer(parseInt(rideId));
+
 
     const rideMeta = await db.query(
       "SELECT consumer_id FROM rides WHERE id = $1",
