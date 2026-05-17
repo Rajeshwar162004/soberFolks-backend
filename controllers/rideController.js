@@ -240,12 +240,14 @@ const findDrivers = async (req, res) => {
 
 // Create ride request with server-side queue and lock-aware assignment
 const requestRide = async (req, res) => {
-  const { pickupLocation, dropLocation, pickupAddress, dropAddress, driverQueue } = req.body;
-  const consumerId = req.user.id;
-
+  const { pickupLocation, dropLocation, pickupAddress, dropAddress, driverQueue, passengerId } = req.body;
+  
   if (req.user.role !== "Consumer") {
     return res.status(403).json({ error: "Only consumers can request rides" });
   }
+
+  const actualConsumerId = passengerId ? parseInt(passengerId) : req.user.id;
+  const bookedById = passengerId ? req.user.id : null;
 
   if (!pickupLocation || !dropLocation) {
     return res.status(400).json({ error: "Invalid ride request data" });
@@ -259,7 +261,7 @@ const requestRide = async (req, res) => {
     const fare = calculateFare(distance);
 
     const computedQueue = buildStagedDriverQueue(
-      await fetchCandidateDrivers(pickupLocation, consumerId)
+      await fetchCandidateDrivers(pickupLocation, actualConsumerId)
     ).queue;
 
     const fallbackQueue = Array.isArray(driverQueue) ? driverQueue : [];
@@ -271,15 +273,15 @@ const requestRide = async (req, res) => {
 
     const rideQuery = `
       INSERT INTO rides (
-        consumer_id, pickup_latitude, pickup_longitude, pickup_address,
+        consumer_id, booked_by_id, pickup_latitude, pickup_longitude, pickup_address,
         drop_latitude, drop_longitude, drop_address, distance_km, fare,
         status, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', NOW())
       RETURNING id
     `;
 
     const rideResult = await db.query(rideQuery, [
-      consumerId,
+      actualConsumerId, bookedById,
       pickupLocation.latitude, pickupLocation.longitude, pickupAddress,
       dropLocation.latitude, dropLocation.longitude, dropAddress,
       distance, fare
@@ -296,9 +298,11 @@ const requestRide = async (req, res) => {
       );
     }
 
+    const bookerInfo = req.body.bookerInfo || null;
+
     const rideRequest = {
       rideId,
-      consumerId,
+      consumerId: actualConsumerId,
       pickupLocation,
       dropLocation,
       pickupAddress,
@@ -308,7 +312,8 @@ const requestRide = async (req, res) => {
       driverQueue: [...finalQueue],
       currentDriverIndex: 0,
       status: 'searching',
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      bookerInfo,
     };
 
     pendingRideRequests.set(rideId, rideRequest);
@@ -463,7 +468,8 @@ const getPendingRides = (req, res) => {
           totalDistance: Math.round(rideRequest.distance * 100) / 100,
           fare: rideRequest.fare,
           queuePosition: rideRequest.currentDriverIndex + 1,
-          createdAt: rideRequest.createdAt
+          createdAt: rideRequest.createdAt,
+          bookerInfo: rideRequest.bookerInfo
         });
       }
     }
@@ -730,9 +736,12 @@ const getActiveRide = async (req, res) => {
       SELECT 
         r.*, 
         c.full_name as consumer_name, 
-        c.phone as consumer_phone
+        c.phone as consumer_phone,
+        b.full_name as booker_name,
+        b.phone as booker_phone
       FROM rides r
       LEFT JOIN consumers c ON r.consumer_id = c.id
+      LEFT JOIN consumers b ON r.booked_by_id = b.id
       WHERE r.driver_id = $1 
       AND r.status IN ('accepted', 'in_progress')
       ORDER BY r.created_at DESC
@@ -1127,6 +1136,31 @@ const completeRide = async (req, res) => {
   }
 };
 
+// Search consumer by phone
+const searchConsumerByPhone = async (req, res) => {
+  const { phone } = req.query;
+  
+  if (!phone) {
+    return res.status(400).json({ error: 'Phone number is required' });
+  }
+
+  try {
+    const result = await db.query(
+      `SELECT id, full_name, phone FROM consumers WHERE phone = $1 OR phone = $2 LIMIT 1`,
+      [phone, phone.replace('+91', '')]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'No user found with this number' });
+    }
+
+    res.json({ success: true, consumer: result.rows[0] });
+  } catch (err) {
+    console.error('Error searching consumer:', err);
+    res.status(500).json({ error: 'Failed to search consumer' });
+  }
+};
+
 // ===== PROFILE Management =====
 
 // Get user profile
@@ -1242,6 +1276,7 @@ module.exports = {
   cancelRide,
   completeRide,
   getProfile,
+  searchConsumerByPhone,
   updateDriverAvailability,
   getDriverProfile,
 };

@@ -7,7 +7,11 @@ const {
   getProfile,
   updateDriverAvailability,
   getDriverProfile,
+  searchConsumerByPhone
 } = require('../controllers/rideController');
+
+// GET /profile/consumer/search - Search consumer by phone
+router.get('/consumer/search', authenticateToken, searchConsumerByPhone);
 
 // GET /profile/:role/:id - Get user profile (Consumer or Driver)
 router.get('/:role/:id', authenticateToken, getProfile);
