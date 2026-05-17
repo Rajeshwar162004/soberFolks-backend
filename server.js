@@ -44,6 +44,21 @@ app.use("/api/chat", chatRoutes);             // /api/chat/rides/:rideId/message
 app.use("/live-track", safetyRoutes);         // /live-track/:token — public HTML tracking page
 app.use("/api/live-track", safetyRoutes);     // /api/live-track/:token/location — JSON for tracking page
 
+// === TEMPORARY MIGRATION ROUTE ===
+app.get('/api/migrate', async (req, res) => {
+  try {
+    const db = require('./db');
+    await db.query(`ALTER TABLE rides ADD COLUMN IF NOT EXISTS booked_by_id INTEGER REFERENCES consumers(id) ON DELETE CASCADE;`);
+    res.json({ success: true, message: "Migration completed successfully" });
+  } catch (error) {
+    if (error.code === '42701') {
+       return res.json({ success: true, message: "Column already exists" });
+    }
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+// =================================
+
 // -------- Health Check --------
 app.get("/health", (req, res) => {
   res.json({
