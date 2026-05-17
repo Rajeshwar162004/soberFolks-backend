@@ -332,7 +332,7 @@ const requestRide = async (req, res) => {
 
     console.log(`\n🎯 === RIDE REQUEST CREATED ===`);
     console.log(`Ride ID: ${rideId}`);
-    console.log(`Consumer ID: ${consumerId}`);
+    console.log(`Consumer ID: ${actualConsumerId}`);
     console.log(`Distance: ${distance.toFixed(2)} km`);
     console.log(`Fare: ₹${fare}`);
     console.log(`Driver Queue: [${finalQueue.map(d => d.id).join(', ')}]`);
