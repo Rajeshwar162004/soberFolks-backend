@@ -728,7 +728,7 @@ const getActiveRide = async (req, res) => {
       LEFT JOIN drivers d ON r.driver_id = d.id
       LEFT JOIN driver_locations dl ON d.id = dl.user_id
       WHERE r.consumer_id = $1 
-      AND r.status IN ('accepted', 'in_progress')
+      AND r.status IN ('pending', 'accepted', 'in_progress')
       ORDER BY r.created_at DESC
       LIMIT 1
     `
