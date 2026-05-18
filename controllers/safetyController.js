@@ -3,7 +3,7 @@
 
 const db = require('../db');
 const { validateTrackToken } = require('../utils/liveTrack');
-const { GOOGLE_MAPS_API_KEY } = require('../config/constants');
+const { WEB_GOOGLE_MAPS_API_KEY } = require('../config/constants');
 
 // ─── HTML helpers ────────────────────────────────────────────────────────────
 
@@ -111,7 +111,7 @@ function trackingPage(token, data) {
   <script>
     const TOKEN   = '${token}';
     const API_URL = '/api/live-track/' + TOKEN + '/location';
-    const GMAPS_KEY = '${GOOGLE_MAPS_API_KEY}';
+    const GMAPS_KEY = '${WEB_GOOGLE_MAPS_API_KEY}';
 
     const PICKUP = { lat: ${parseFloat(pickup_latitude)}, lng: ${parseFloat(pickup_longitude)} };
     const DROP   = { lat: ${parseFloat(drop_latitude)},   lng: ${parseFloat(drop_longitude)}   };
