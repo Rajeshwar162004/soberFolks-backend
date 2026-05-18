@@ -209,14 +209,14 @@ function trackingPage(token, data) {
           driverMarker.setPosition(pos);
           lastLat = lat; lastLng = lng;
 
-          // Draw directions route driver → current destination
-          const dest = data.rideStatus === 'in_progress' ? DROP : PICKUP;
+          // Draw directions route between Pickup and Drop
           const ds   = new google.maps.DirectionsService();
-          ds.route({ origin: pos, destination: dest, travelMode: 'DRIVING' },
+          ds.route({ origin: PICKUP, destination: DROP, travelMode: 'DRIVING' },
             (result, status) => { if (status === 'OK') directionsRenderer.setDirections(result); }
           );
 
           // ETA
+          const dest = data.rideStatus === 'in_progress' ? DROP : PICKUP;
           const dist = haversine(lat, lng, dest.lat, dest.lng);
           const eta  = Math.round((dist / 25) * 60);
           document.getElementById('eta-row').textContent =
