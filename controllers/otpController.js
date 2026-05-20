@@ -294,17 +294,6 @@ const verifyDropOTP = async (req, res) => {
       });
     }
 
-    // Check max attempts
-    if (isMaxAttemptsExceeded(otpData.attempts, 5)) {
-      await db.query(
-        'UPDATE ride_otp_verifications SET locked = TRUE, locked_at = NOW() WHERE id = $1',
-        [otpData.id]
-      );
-      return res.status(429).json({ 
-        error: 'Maximum verification attempts exceeded. OTP locked.' 
-      });
-    }
-
     // Check expiry
     if (isOTPExpired(otpData.generated_at, 30)) {
       return res.status(400).json({ error: 'OTP has expired. Contact support.' });
@@ -312,13 +301,43 @@ const verifyDropOTP = async (req, res) => {
 
     // Verify OTP
     if (otp !== otpData.otp_code) {
-      // Increment attempts
+      const nextAttempts = otpData.attempts + 1;
+
       await db.query(
         'UPDATE ride_otp_verifications SET attempts = attempts + 1, last_attempt_at = NOW() WHERE id = $1',
         [otpData.id]
       );
 
-      const attemptsRemaining = 5 - (otpData.attempts + 1);
+      if (isMaxAttemptsExceeded(nextAttempts, 5)) {
+        await db.query(
+          'UPDATE ride_otp_verifications SET locked = TRUE, locked_at = NOW() WHERE id = $1',
+          [otpData.id]
+        );
+
+        // Edge Case: Auto-complete the ride if Drop OTP fails 5 times, so the driver isn't stuck.
+        await db.query(
+          "UPDATE rides SET status = 'completed', completed_at = NOW() WHERE id = $1",
+          [rideId]
+        );
+
+        await db.query("UPDATE drivers SET is_available = TRUE WHERE id = $1", [driverId]);
+
+        const { emitRideStageChanged } = require('../realtime/socketServer');
+        emitRideStageChanged(parseInt(rideId), {
+          stage: "completed",
+          status: "completed",
+          reason: "Drop OTP failed 5 times - Auto-completed",
+          timestamp: new Date().toISOString(),
+        });
+
+        return res.status(429).json({
+          error: 'Maximum verification attempts exceeded. Ride has been auto-completed for safety.',
+          attemptsRemaining: 0,
+          rideStatus: 'completed',
+        });
+      }
+
+      const attemptsRemaining = 5 - nextAttempts;
       
       console.log(`❌ Invalid drop OTP attempt for ride ${rideId}. Attempts remaining: ${attemptsRemaining}`);
 

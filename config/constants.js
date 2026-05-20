@@ -25,6 +25,18 @@ const PER_KM_RATE = 10; // Per kilometer rate
 const MAX_SEARCH_RADIUS_KM = 9; // Maximum search radius for drivers
 const MAX_DRIVERS_TO_RETURN = 3; // Maximum number of drivers to return
 
+// Razorpay Configuration
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || "rzp_test_Sr7QTsbqGutmhQ";
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "brwZV1J5fh1iZliZj4AWtsVQ";
+
+// Payment Configuration
+const PLATFORM_COMMISSION_PERCENT = 20; // 20% platform fee
+const DRIVER_EARNING_PERCENT = 80; // 80% to driver
+
+// Withdrawal Configuration
+const MIN_WITHDRAWAL_AMOUNT = 10000; // ₹100 in paise
+const MAX_WITHDRAWAL_AMOUNT = 5000000; // ₹50,000 in paise
+
 module.exports = {
   PORT,
   JWT_SECRET,
@@ -36,5 +48,12 @@ module.exports = {
   BASE_FARE,
   PER_KM_RATE,
   MAX_SEARCH_RADIUS_KM,
-  MAX_DRIVERS_TO_RETURN
+  MAX_DRIVERS_TO_RETURN,
+  // Payment exports
+  RAZORPAY_KEY_ID,
+  RAZORPAY_KEY_SECRET,
+  PLATFORM_COMMISSION_PERCENT,
+  DRIVER_EARNING_PERCENT,
+  MIN_WITHDRAWAL_AMOUNT,
+  MAX_WITHDRAWAL_AMOUNT
 };

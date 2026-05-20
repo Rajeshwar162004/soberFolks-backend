@@ -4,6 +4,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Environment
+.env
+
 # IDE
 .vscode/
 .idea/
@@ -30,4 +33,6 @@ temp/
 
 # Old backup files
 server_old_backup.js
-.env
+
+# Mobile app files accidentally copied into backend folder
+Gemfile

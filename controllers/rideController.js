@@ -15,6 +15,20 @@ const BACKEND_URL = process.env.BACKEND_URL || 'https://soberfolks-backend.onren
 const SEARCH_RADIUS_STEPS_KM = [1.5, 3, 9];
 const DRIVER_LOCK_STALE_AFTER_MS = RIDE_REQUEST_TIMEOUT * 2;
 
+function normalizePhoneVariants(phone) {
+  const raw = String(phone || '').trim();
+  const digits = raw.replace(/\D/g, '');
+  const withoutCountryCode = digits.length > 10 ? digits.slice(-10) : digits;
+
+  return Array.from(new Set([
+    raw,
+    digits,
+    withoutCountryCode,
+    withoutCountryCode ? `+91${withoutCountryCode}` : '',
+    withoutCountryCode ? `91${withoutCountryCode}` : '',
+  ].filter(Boolean)));
+}
+
 async function fetchCandidateDrivers(pickupLocation, consumerId) {
   const userLat = parseFloat(pickupLocation.latitude);
   const userLon = parseFloat(pickupLocation.longitude);
@@ -246,14 +260,34 @@ const requestRide = async (req, res) => {
     return res.status(403).json({ error: "Only consumers can request rides" });
   }
 
-  const actualConsumerId = passengerId ? parseInt(passengerId) : req.user.id;
-  const bookedById = passengerId ? req.user.id : null;
+  const parsedPassengerId = passengerId ? parseInt(passengerId, 10) : null;
+  if (passengerId && (!Number.isInteger(parsedPassengerId) || parsedPassengerId <= 0)) {
+    return res.status(400).json({ error: "Invalid passenger selected" });
+  }
+
+  const actualConsumerId = parsedPassengerId || req.user.id;
+  const bookedById = parsedPassengerId ? req.user.id : null;
 
   if (!pickupLocation || !dropLocation) {
     return res.status(400).json({ error: "Invalid ride request data" });
   }
 
   try {
+    if (parsedPassengerId) {
+      if (parsedPassengerId === req.user.id) {
+        return res.status(400).json({ error: "Passenger must be different from the booker" });
+      }
+
+      const passengerCheck = await db.query(
+        "SELECT id FROM consumers WHERE id = $1",
+        [parsedPassengerId]
+      );
+
+      if (passengerCheck.rows.length === 0) {
+        return res.status(404).json({ error: "Passenger not found. Ask them to sign up on SoberFolk first." });
+      }
+    }
+
     const distance = calculateDistance(
       pickupLocation.latitude, pickupLocation.longitude,
       dropLocation.latitude, dropLocation.longitude
@@ -298,7 +332,7 @@ const requestRide = async (req, res) => {
       );
     }
 
-    const bookerInfo = req.body.bookerInfo || null;
+    const bookerInfo = bookedById ? req.body.bookerInfo || null : null;
 
     const rideRequest = {
       rideId,
@@ -356,7 +390,9 @@ const requestRide = async (req, res) => {
         status: 'searching',
         currentDriver: lockedDriver,
         queuePosition: rideRequest.currentDriverIndex + 1,
-        totalDrivers: rideRequest.driverQueue.length
+        totalDrivers: rideRequest.driverQueue.length,
+        consumerId: actualConsumerId,
+        bookedById
       }
     });
   } catch (error) {
@@ -718,6 +754,10 @@ const getActiveRide = async (req, res) => {
     ? `
       SELECT 
         r.*, 
+        c.full_name as consumer_name,
+        c.phone as consumer_phone,
+        b.full_name as booker_name,
+        b.phone as booker_phone,
         d.full_name as driver_name, 
         d.phone as driver_phone, 
         d.scooter_model,
@@ -725,6 +765,8 @@ const getActiveRide = async (req, res) => {
         dl.latitude as driver_latitude,
         dl.longitude as driver_longitude
       FROM rides r
+      LEFT JOIN consumers c ON r.consumer_id = c.id
+      LEFT JOIN consumers b ON r.booked_by_id = b.id
       LEFT JOIN drivers d ON r.driver_id = d.id
       LEFT JOIN driver_locations dl ON d.id = dl.user_id
       WHERE r.consumer_id = $1 
@@ -778,6 +820,11 @@ const getActiveRide = async (req, res) => {
     };
 
     if (role === "Consumer") {
+      rideData.consumer = {
+        id: ride.consumer_id,
+        name: ride.consumer_name,
+        phone: ride.consumer_phone
+      };
       rideData.driver = ride.driver_id ? {
         id: ride.driver_id,
         name: ride.driver_name,
@@ -791,8 +838,17 @@ const getActiveRide = async (req, res) => {
       } : null;
     } else {
       rideData.consumer = {
+        id: ride.consumer_id,
         name: ride.consumer_name,
         phone: ride.consumer_phone
+      };
+    }
+
+    if (ride.booked_by_id) {
+      rideData.bookedBy = {
+        id: ride.booked_by_id,
+        name: ride.booker_name,
+        phone: ride.booker_phone
       };
     }
 
@@ -1145,9 +1201,10 @@ const searchConsumerByPhone = async (req, res) => {
   }
 
   try {
+    const phoneVariants = normalizePhoneVariants(phone);
     const result = await db.query(
-      `SELECT id, full_name, phone FROM consumers WHERE phone = $1 OR phone = $2 LIMIT 1`,
-      [phone, phone.replace('+91', '')]
+      `SELECT id, full_name, phone FROM consumers WHERE phone = ANY($1::text[]) LIMIT 1`,
+      [phoneVariants]
     );
 
     if (result.rows.length === 0) {

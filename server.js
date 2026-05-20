@@ -22,6 +22,8 @@ const mapsRoutes = require("./routes/mapsRoutes");
 const otpRoutes = require("./routes/otpRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const safetyRoutes = require("./routes/safetyRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
+const walletRoutes = require("./routes/walletRoutes");
 const { initRealtime } = require("./realtime/socketServer");
 
 const app = express();
@@ -41,6 +43,8 @@ app.use("/api/feedback", feedbackRoutes);     // /api/feedback/*
 app.use("/api", mapsRoutes);                  // /api/geocode, /api/directions, /api/places/*
 app.use("/api/otp", otpRoutes);               // /api/otp/* - OTP verification endpoints
 app.use("/api/chat", chatRoutes);             // /api/chat/rides/:rideId/messages
+app.use("/api/payments", paymentRoutes);      // /api/payments/* - Payment endpoints
+app.use("/api/wallet", walletRoutes);         // /api/wallet/* - Driver wallet endpoints
 app.use("/live-track", safetyRoutes);         // /live-track/:token — public HTML tracking page
 app.use("/api/live-track", safetyRoutes);     // /api/live-track/:token/location — JSON for tracking page
 
@@ -72,7 +76,9 @@ app.get("/health", (req, res) => {
       "Ride Booking with Timeout",
       "Real-time Driver Matching",
       "Geocoding & Directions",
-      "Geohash-based Driver Search"
+      "Geohash-based Driver Search",
+      "Razorpay Payment Integration",
+      "Driver Wallet System"
     ],
     activeRideRequests: pendingRideRequests.size
   });
