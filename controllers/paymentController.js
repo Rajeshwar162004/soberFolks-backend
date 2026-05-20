@@ -254,13 +254,23 @@ async function verifyPayment(req, res) {
 
     // Check if already processed
     if (payment.status === 'success') {
-      await client.query('ROLLBACK');
+      await creditDriverWallet(
+        client,
+        payment.driver_id,
+        payment.driver_amount,
+        payment.id,
+        payment.ride_id
+      );
+
+      await client.query('COMMIT');
       return res.json({ 
         success: true, 
         message: 'Payment already verified',
         payment: {
           id: payment.id,
-          amount: payment.total_amount / 100
+          amount: payment.total_amount / 100,
+          driverAmount: payment.driver_amount / 100,
+          platformFee: payment.platform_fee / 100
         }
       });
     }
@@ -327,6 +337,18 @@ async function verifyPayment(req, res) {
  * Credit driver wallet after successful payment
  */
 async function creditDriverWallet(client, driverId, amountPaise, paymentId, rideId) {
+  const existingCredit = await client.query(
+    `SELECT id FROM wallet_transactions
+     WHERE reference_type = 'payment' AND reference_id = $1 AND type = 'credit'
+     LIMIT 1`,
+    [paymentId]
+  );
+
+  if (existingCredit.rows.length > 0) {
+    console.log(`Wallet credit already exists for payment ${paymentId}; skipping duplicate credit`);
+    return;
+  }
+
   // Check if driver has a wallet, create if not
   let walletResult = await client.query(
     'SELECT id, balance FROM driver_wallets WHERE driver_id = $1 FOR UPDATE',
